@@ -10,8 +10,9 @@
 <section class="screen" id="guess"><div class="eyebrow">финальная догадка</div><h2 style="font-size:34px;letter-spacing:-2px;margin:8px 0">Кого загадал соперник?</h2><div class="board" id="guessBoard" style="margin-top:20px"></div><div class="controls"><button class="btn light" onclick="render()">Отмена</button><span class="spacer"></span><button class="btn primary" id="guessOk" disabled onclick="send({t:'guess',id:sel})">Подтвердить</button></div></section>
 <section class="screen" id="end"><div class="hero"><div class="winner">✦</div><div class="eyebrow">партия завершена</div><h1 style="font-size:clamp(42px,8vw,70px);letter-spacing:-4px" id="endTitle"></h1><p id="endText"></p><div class="actions"><button class="btn primary" onclick="send({t:'again'})">Реванш</button></div></div></section></main><div id="toast" class="toast hidden"></div>
 <script>const CFG=__CFG__;
-let people=[],photos={};const EMO={'Музыка':'🎤','Кино':'🎬','Спорт':'⚽','Мультфильмы':'🧸','Аниме':'🌸','Игры':'🎮','Супергерои':'🦸','Блогеры':'📱','История':'🏛️','Наука':'🔬'};const palettes=['#dfe9db','#f3dfd8','#dce6f4','#f0e6c9','#e7def2','#d8ece9','#f2dfe8','#e8e7df'];const tg=window.Telegram&&Telegram.WebApp;if(tg){tg.ready();tg.expand()}
+let people=[],photos={};const EMO={'Музыка':'🎤','Кино':'🎬','Спорт':'⚽','Мультфильмы':'🧸','Аниме':'🌸','Игры':'🎮','Супергерои':'🦸','Блогеры':'📱','История':'🏛️','Наука':'🔬','Русская музыка':'🎙️'};const palettes=['#dfe9db','#f3dfd8','#dce6f4','#f0e6c9','#e7def2','#d8ece9','#f2dfe8','#e8e7df'];const tg=window.Telegram&&Telegram.WebApp;if(tg){tg.ready();tg.expand()}
 const u=tg&&tg.initDataUnsafe&&tg.initDataUnsafe.user,ME={name:u?((u.first_name||'')+(u.last_name?' '+u.last_name:'')).trim()||u.username||'Игрок':'Игрок',photo:(u&&u.photo_url)||''};
+if(!u){try{ME.name=localStorage.gwn||(localStorage.gwn=(prompt('Как тебя зовут?')||'Игрок').trim().slice(0,30)||'Игрок')}catch(e){}}
 const token=localStorage.gwt||(localStorage.gwt=Math.random().toString(36).slice(2)+Date.now().toString(36));
 let S=null,ws,room=null,marks=new Set(),sel=null,cur='home';
 const $=id=>document.getElementById(id),esc=t=>String(t).replace(/[&<>"]/g,c=>'&#'+c.charCodeAt(0)+';');
@@ -23,7 +24,7 @@ function connect(init){ws=new WebSocket((location.protocol==='https:'?'wss://':'
   ws.onclose=()=>{if(room)setTimeout(()=>connect(()=>send({t:'join',name:ME.name,photo:ME.photo,room,token})),1500)}}
 function createRoom(){connect(()=>send({t:'join',name:ME.name,photo:ME.photo,create:1,token,cat:$('catSel').value,live:$('modeSel').value==='1'}))}
 function joinRoom(c){c=(c||'').trim().toUpperCase();if(c)connect(()=>send({t:'join',name:ME.name,photo:ME.photo,room:c,token}))}
-function link(){const c=S.code;return CFG.bot&&CFG.app?`https://t.me/${CFG.bot}/${CFG.app}?startapp=${c}`:location.origin+'/?room='+c}
+function link(){const c=S.code;return CFG.bot?`https://t.me/${CFG.bot}${CFG.app?'/'+CFG.app:''}?startapp=${c}`:location.origin+'/?room='+c}
 function share(){const u='https://t.me/share/url?url='+encodeURIComponent(link())+'&text='+encodeURIComponent('Сыграем в «Угадай кто?» Код комнаты: '+S.code);tg?tg.openTelegramLink(u):window.open(u,'_blank')}
 function makeCard(i,fn,cls){const p=people[i],el=document.createElement('button');el.className='person'+(cls?' '+cls:'');el.dataset.id=i;const pt=document.createElement('div');pt.className='portrait';pt.style.background=palettes[i%palettes.length];
   const em=document.createElement('span');em.className='initial';em.textContent=p[2];pt.appendChild(em);
@@ -54,8 +55,8 @@ function av(p){return '<span class="av">'+(p&&p.p?'<img src="'+esc(p.p)+'" refer
 function vs(s){const pl=(p,who,t)=>'<div class="pl'+(t?' turn':'')+'">'+av(p)+'<div style="min-width:0"><b>'+esc(p?p.n:'Ждём соперника…')+'</b><small>'+who+'</small></div></div>';
   const on=['ask','answer','mark'].includes(s.stage);return pl(s.names[s.seat],'Ты',on&&s.turn===s.seat)+pl(s.names[1-s.seat],'Соперник',on&&s.turn!==s.seat)}
 let deckKey='';
-function setDeck(d){const k=JSON.stringify(d);if(k===deckKey)return;deckKey=k;people=d.map(([n,c])=>[n,c,EMO[c]||'❓']);photos={};
-  people.forEach((p,i)=>{fetch('https://en.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(p[0].replace(/ /g,'_'))).then(r=>r.ok?r.json():null).then(x=>{if(k!==deckKey||!x||!x.thumbnail)return;photos[i]=x.thumbnail.source;
+function setDeck(d){const k=JSON.stringify(d);if(k===deckKey)return;deckKey=k;people=d.map(([n,c,r])=>[r||n,c,EMO[c]||'❓',n]);photos={};
+  people.forEach((p,i)=>{fetch('https://'+(p[1]==='Русская музыка'?'ru':'en')+'.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent((p[1]==='Русская музыка'?p[0]:p[3]).replace(/ /g,'_'))).then(r=>r.ok?r.json():null).then(x=>{if(k!==deckKey||!x||!x.thumbnail)return;photos[i]=x.thumbnail.source;
     document.querySelectorAll('.person[data-id="'+i+'"] .portrait').forEach(pt=>{if(!pt.querySelector('img')){const im=document.createElement('img');im.src=x.thumbnail.source;im.alt=p[0];im.onerror=()=>im.remove();pt.appendChild(im)}})}).catch(()=>{})})}
 $('catSel').innerHTML='<option value="all">🎲 Все категории (случайно)</option>'+CFG.cats.map(c=>'<option value="'+c+'">'+(EMO[c]||'')+' '+c+'</option>').join('');
 </script></body></html>
