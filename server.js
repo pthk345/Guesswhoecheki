@@ -1,6 +1,7 @@
 const http=require('http'),fs=require('fs'),path=require('path'),{WebSocketServer}=require('ws');
-const CARDS=require('./cards.json');
-function makeDeck(cat){const pool=cat&&CARDS[cat]?CARDS[cat].map(n=>[n,cat]):Object.entries(CARDS).flatMap(([c,l])=>l.map(n=>[n,c]));for(let i=pool.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[pool[i],pool[j]]=[pool[j],pool[i]]}return pool.slice(0,24)}
+const CARDS=require('./cards.json'),RU=require('./ru.json');
+function cleanCustom(a){if(!Array.isArray(a))return null;const l=a.slice(0,60).map(c=>({n:String((c&&c.n)||'').trim().slice(0,40),u:/^https:\/\/\S{1,300}$/.test((c&&c.u)||'')?c.u:''})).filter(c=>c.n);return l.length>=8?l:null}
+function makeDeck(cat,custom){const pool=custom?custom.map(c=>[c.n,'Своё поле',c.n,c.u]):cat&&CARDS[cat]?CARDS[cat].map((n,i)=>[n,cat,RU[cat][i]]):Object.entries(CARDS).flatMap(([c,l])=>l.map((n,i)=>[n,c,RU[c][i]]));for(let i=pool.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[pool[i],pool[j]]=[pool[j],pool[i]]}return pool.slice(0,24)}
 const PORT=process.env.PORT||3000,TOKEN=process.env.BOT_TOKEN,URL_=process.env.WEBAPP_URL,BOT=process.env.BOT_USERNAME||'',APP=process.env.APP_SHORTNAME||'';
 const html=()=>fs.readFileSync(path.join(__dirname,'public','index.html'),'utf8').replace('__CFG__',JSON.stringify({bot:BOT,app:APP,cats:Object.keys(CARDS)}));
 const srv=http.createServer((req,res)=>{if(req.url==='/health'){res.end('ok');return}res.writeHead(200,{'content-type':'text/html; charset=utf-8'});res.end(html())});
@@ -10,7 +11,7 @@ const newCode=()=>{let c;do{c=Math.random().toString(36).slice(2,7).toUpperCase(
 function view(r,seat){return{t:'state',live:r.live,names:r.seats.map(s=>s&&{n:s.name,p:s.photo}),deck:r.deck,cat:r.cat,code:r.code,seat,stage:r.stage,turn:r.turn,mine:r.secrets[seat],picked:r.secrets.map(x=>x!==null),q:r.q,a:r.a,last:r.last,
   oppOnline:!!(r.seats[1-seat]&&r.seats[1-seat].ws),over:r.stage==='over'?{winner:r.winner,secrets:r.secrets}:null}}
 function push(r){r.seats.forEach((s,i)=>s&&send(s.ws,view(r,i)));r.touched=Date.now()}
-function reset(r){r.deck=makeDeck(r.cat);r.secrets=[null,null];r.turn=0;r.q=r.a=r.last=null;r.winner=null;r.stage='pick'}
+function reset(r){r.deck=makeDeck(r.cat,r.custom);r.secrets=[null,null];r.turn=0;r.q=r.a=r.last=null;r.winner=null;r.stage='pick'}
 function act(r,seat,m){const my=r.turn===seat;
   if(m.t==='pick'&&r.stage==='pick'&&r.secrets[seat]===null&&m.id>=0&&m.id<24){r.secrets[seat]=m.id|0;if(r.secrets.every(x=>x!==null)){r.stage='ask';r.turn=Math.random()<.5?0:1}}
   else if(m.t==='ask'&&r.stage==='ask'&&my&&typeof m.text==='string'&&m.text.trim()){r.q=m.text.trim().slice(0,120);r.a=null;r.last=null;r.stage='answer'}
@@ -25,7 +26,7 @@ function act(r,seat,m){const my=r.turn===seat;
 wss.on('connection',ws=>{let room=null,seat=-1;
   ws.on('message',raw=>{let m;try{m=JSON.parse(raw)}catch{return}
     if(m.t==='join'&&typeof m.token==='string'){
-      const r=m.create?(()=>{const c=newCode(),x={code:c,seats:[null,null],stage:'lobby',cat:CARDS[m.cat]?m.cat:'all',live:!!m.live};reset(x);x.stage='lobby';rooms.set(c,x);return x})():rooms.get(String(m.room||'').toUpperCase());
+      const r=m.create?(()=>{const c=newCode(),x={code:c,seats:[null,null],stage:'lobby',cat:CARDS[m.cat]?m.cat:'all',live:!!m.live,custom:m.cat==='custom'?cleanCustom(m.custom):null};reset(x);x.stage='lobby';rooms.set(c,x);return x})():rooms.get(String(m.room||'').toUpperCase());
       if(!r)return send(ws,{t:'err',m:'Комната не найдена'});
       let i=r.seats.findIndex(s=>s&&s.token===m.token);
       if(i<0){i=r.seats.findIndex(s=>!s);if(i<0)return send(ws,{t:'err',m:'Комната заполнена'});r.seats[i]={token:m.token}}
